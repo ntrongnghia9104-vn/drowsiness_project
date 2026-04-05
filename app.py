@@ -1,25 +1,16 @@
-import sys
-import subprocess
-
-# --- BỘ TỰ ĐỘNG CHỮA LÀNH LỖI OPENCV (BẢN CHUẨN) ---
-try:
-    import cv2
-except ImportError:
-    # Dùng subprocess.call thay vì check_call để lờ đi cảnh báo nếu gói không tồn tại
-    subprocess.call([sys.executable, "-m", "pip", "uninstall", "-y", "opencv-python", "opencv-contrib-python"])
-    subprocess.call([sys.executable, "-m", "pip", "install", "opencv-python-headless"])
-    import cv2
-# ---------------------------------------
-
 import streamlit as st
 import pandas as pd
 import numpy as np
+import cv2
 import mediapipe as mp
 import math
 import tempfile
 import time
 import os
-import json # Đã thêm thư viện json để đọc file đánh giá
+import json
+
+# ================= CẤU HÌNH TRANG WEB =================
+# ... (Giữ nguyên toàn bộ code của bạn từ đoạn này trở xuống)
 
 # ================= CẤU HÌNH TRANG WEB =================
 st.set_page_config(page_title="Hệ thống Cảnh báo Ngủ gật", page_icon="🚗", layout="wide")
