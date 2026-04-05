@@ -1,0 +1,21 @@
+# Bỏ qua môi trường ảo (nếu có)
+venv/
+env/
+.venv/
+
+# Bỏ qua các file cache của Python
+__pycache__/
+*.pyc
+
+# Bỏ qua các thư mục chứa video nặng
+test_dataset/
+
+# Bỏ qua các file video/âm thanh lẻ
+*.mp4
+*.avi
+*.mov
+*.mp3
+
+# Bỏ qua các file rác của hệ điều hành
+.DS_Store
+Thumbs.db
