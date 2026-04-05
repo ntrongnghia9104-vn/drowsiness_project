@@ -71,7 +71,7 @@ if page == "1. Giới thiệu & Khám phá dữ liệu":
         'EAR_Trung_bình': [0.315, 0.317, 0.145, 0.117, 0.107, 0.295],
         'Đánh_giá_Tức_thời': ['Mở mắt', 'Mở mắt', 'Nhắm mắt', 'Nhắm mắt', 'Nhắm mắt', 'Mở mắt']
     })
-    st.dataframe(mock_data, width='tretch')
+    st.dataframe(mock_data, width='stretch')
 
 # ================= TRANG 2: TRIỂN KHAI MÔ HÌNH (ĐÃ SỬA ĐỂ CHẠY REAL-TIME TRÊN STREAMLIT CLOUD) =================
 elif page == "2. Triển khai mô hình":
@@ -189,7 +189,7 @@ elif page == "2. Triển khai mô hình":
                     cv2.putText(rgb_frame, f"EAR: {avg_ear:.2f}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
             
             # HIỂN THỊ FRAME (đã được fix để chạy mượt trên Cloud)
-            stframe.image(rgb_frame, channels="RGB", width='tretch')
+            stframe.image(rgb_frame, channels="RGB", width='stretch')
             
             # ====================== ĐIỀU CHỈNH TỐC ĐỘ REAL-TIME ======================
             processed_frames += 1
@@ -292,6 +292,6 @@ elif page == "3. Đánh giá & Hiệu năng":
             'Tên file video': st.session_state['history_videos'],
             'Trạng thái kiểm tra': ['Hoàn tất luồng xử lý' for _ in st.session_state['history_videos']]
         })
-        st.dataframe(df_history, width='tretch')
+        st.dataframe(df_history, width='stretch')
     else:
         st.info("Chưa có video nào được kiểm thử thủ công trên App. Hãy sang Trang 2 để tải video lên!")
