@@ -3,4 +3,3 @@ pandas
 numpy
 opencv-python-headless
 mediapipe
-pygame
