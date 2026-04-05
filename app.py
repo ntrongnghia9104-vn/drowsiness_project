@@ -1,16 +1,3 @@
-import os
-
-# ÉP BUỘC CHẾ ĐỘ HEADLESS CHO OPENCV
-os.environ["OPENCV_VIDEOIO_PRIORITY_MSMF"] = "0"
-
-try:
-    import cv2
-except ImportError:
-    import subprocess
-    # Cài đặt bản headless sạch sẽ nhất
-    subprocess.call([sys.executable, "-m", "pip", "install", "opencv-python-headless==4.8.0.74", "--force-reinstall"])
-    import cv2
-# --------------------------------------------------------------------
 import streamlit as st
 import pandas as pd
 import numpy as np
