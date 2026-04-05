@@ -9,6 +9,8 @@ import time
 import os
 import pygame 
 import json
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # ================= CẤU HÌNH TRANG WEB =================
 st.set_page_config(page_title="Hệ thống Cảnh báo Ngủ gật", page_icon="🚗", layout="wide")
@@ -73,7 +75,7 @@ if page == "1. Giới thiệu & Khám phá dữ liệu":
     })
     st.dataframe(mock_data, width='stretch')
 
-# ================= TRANG 2: TRIỂN KHAI MÔ HÌNH (ĐÃ SỬA ĐỂ CHẠY REAL-TIME TRÊN STREAMLIT CLOUD) =================
+# ================= TRANG 2: TRIỂN KHAI MÔ HÌNH =================
 elif page == "2. Triển khai mô hình":
     st.title("⚙️ Triển khai nhận diện qua Video")
     
@@ -91,20 +93,16 @@ elif page == "2. Triển khai mô hình":
 
         st.info(f"Đang xử lý: {uploaded_file.name}")
         
-        # ====================== SỬA LỖI THƯỜNG GẶP TRÊN STREAMLIT CLOUD ======================
-        # 1. Tạo temp file + flush + fsync để đảm bảo file đã ghi đầy đủ trước khi cv2 đọc
-        # 2. Thêm delay để video chạy đúng tốc độ gốc (real-time playback)
-        # 3. Tối ưu hơn để tránh lag UI trên Cloud
-        
+        # Xử lý lưu file tạm để cv2 có thể đọc (tương thích Streamlit Cloud)
         tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
         tfile.write(uploaded_file.read())
-        tfile.flush()           # Quan trọng: ép dữ liệu xuống đĩa
-        os.fsync(tfile.fileno()) # Đảm bảo file hoàn chỉnh trước khi cv2 mở
-        tfile.close()            # Đóng file để cv2 có thể đọc
+        tfile.flush()          
+        os.fsync(tfile.fileno()) 
+        tfile.close()            
 
         cap = cv2.VideoCapture(tfile.name)
         
-        # --- LẤY FPS GỐC CỦA VIDEO ---
+        # Lấy FPS gốc của Video
         video_fps = cap.get(cv2.CAP_PROP_FPS)
         if video_fps == 0 or math.isnan(video_fps): 
             video_fps = 30.0
@@ -116,7 +114,7 @@ elif page == "2. Triển khai mô hình":
         status_text = st.empty() 
         audio_status = st.empty() 
         
-        # --- KHỞI TẠO PYGAME ---
+        # Khởi tạo âm thanh cảnh báo
         alarm_sound_path = "alarm.mp3" 
         pygame_initialized = False
         
@@ -129,7 +127,6 @@ elif page == "2. Triển khai mô hình":
             except Exception as e:
                 audio_status.warning(f"⚠️ Không thể khởi tạo âm thanh (Bình thường nếu chạy trên Cloud): {e}")
 
-        # ====================== REAL-TIME PLAYBACK LOGIC ======================
         start_time = time.time()
         processed_frames = 0
 
@@ -139,7 +136,7 @@ elif page == "2. Triển khai mô hình":
                 status_text.success("✅ Đã phát xong video!")
                 break 
                 
-            # Tối ưu kích thước (giảm lag trên Cloud)
+            # Resize khung hình để giảm tải tính toán
             h_ori, w_ori, _ = frame.shape
             new_w = 640
             new_h = int((new_w / w_ori) * h_ori)
@@ -188,24 +185,22 @@ elif page == "2. Triển khai mô hình":
                     
                     cv2.putText(rgb_frame, f"EAR: {avg_ear:.2f}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
             
-            # HIỂN THỊ FRAME (đã được fix để chạy mượt trên Cloud)
+            # Hiển thị lên web
             stframe.image(rgb_frame, channels="RGB", width='stretch')
             
-            # ====================== ĐIỀU CHỈNH TỐC ĐỘ REAL-TIME ======================
+            # Đồng bộ hóa tốc độ phát thực tế (Real-time playback sync)
             processed_frames += 1
             if video_fps > 0:
-                target_elapsed = processed_frames / video_fps          # Thời gian lý thuyết theo FPS gốc
+                target_elapsed = processed_frames / video_fps 
                 actual_elapsed = time.time() - start_time
                 sleep_time = target_elapsed - actual_elapsed
                 if sleep_time > 0:
-                    time.sleep(sleep_time)   # Giữ video chạy đúng tốc độ gốc
+                    time.sleep(sleep_time)
 
-        # Dọn dẹp
+        # Dọn dẹp tài nguyên
         if pygame_initialized:
             pygame.mixer.music.stop()
         cap.release()
-        
-        # Xóa file tạm (tốt cho Cloud)
         try:
             os.unlink(tfile.name)
         except:
@@ -233,30 +228,55 @@ elif page == "3. Đánh giá & Hiệu năng":
             precision = TP / (TP + FP) if (TP + FP) > 0 else 0
             recall = TP / (TP + FN) if (TP + FN) > 0 else 0
             
-            st.subheader("1. Các chỉ số đo lường (Metrics)")
+            st.subheader("1. Tổng quan các chỉ số đo lường (Metrics)")
+            st.markdown("Các chỉ số dưới đây phản ánh khả năng nhận diện thực tế của mô hình trên tổng số **{}** video kiểm thử:".format(total))
+            
             col1, col2, col3 = st.columns(3)
             col1.metric("Accuracy (Độ chính xác)", f"{accuracy*100:.1f}%", help="Tỷ lệ dự đoán đúng trên tổng số video")
             col2.metric("Precision (Độ chuẩn xác)", f"{precision*100:.1f}%", help="Khả năng tránh báo động giả (False Positive)")
             col3.metric("Recall (Độ nhạy)", f"{recall*100:.1f}%", help="Khả năng không bỏ lọt ngủ gật (False Negative)")
             
-            st.subheader("2. Công cụ trực quan (Charts) - Ma trận nhầm lẫn")
-            col_chart1, col_chart2 = st.columns([1.2, 1])
+            st.divider()
+            st.subheader("2. Phân tích Trực quan (Data Visualization)")
             
-            with col_chart1:
-                conf_matrix = pd.DataFrame(
-                    [[TN, FP], [FN, TP]], 
-                    index=['Thực tế: Tỉnh táo (0)', 'Thực tế: Ngủ gật (1)'],
-                    columns=['Dự đoán: Tỉnh táo (0)', 'Dự đoán: Ngủ gật (1)']
-                )
-                st.table(conf_matrix)
-                st.caption(f"**Tổng số mẫu kiểm thử:** {total} video. Bảng thể hiện sự tương quan giữa thực tế và dự đoán của hệ thống.")
+            chart_col1, chart_col2 = st.columns(2)
+            
+            with chart_col1:
+                st.markdown("**Biểu đồ tỷ lệ các chỉ số hiệu năng**")
+                metrics_df = pd.DataFrame({
+                    'Chỉ số': ['Accuracy', 'Precision', 'Recall'],
+                    'Giá trị (%)': [accuracy * 100, precision * 100, recall * 100]
+                })
+                
+                fig_bar, ax_bar = plt.subplots(figsize=(6, 4))
+                sns.barplot(x='Chỉ số', y='Giá trị (%)', data=metrics_df, palette=['#3498db', '#f1c40f', '#e74c3c'], ax=ax_bar)
+                ax_bar.set_ylim(0, 100)
+                ax_bar.set_ylabel('Phần trăm (%)')
+                
+                for p in ax_bar.patches:
+                    ax_bar.annotate(format(p.get_height(), '.1f') + '%', 
+                                    (p.get_x() + p.get_width() / 2., p.get_height()), 
+                                    ha = 'center', va = 'center', 
+                                    xytext = (0, 9), 
+                                    textcoords = 'offset points', weight='bold')
+                st.pyplot(fig_bar)
+                st.caption("Biểu đồ so sánh 3 chỉ số quan trọng nhất của mô hình. Trong bài toán an toàn giao thông, Recall luôn được ưu tiên cao nhất.")
 
-            with col_chart2:
-                chart_df = pd.DataFrame({
-                    "Phân loại": ["Dự đoán ĐÚNG (TP+TN)", "Dự đoán SAI (FP+FN)"],
-                    "Số lượng video": [TP + TN, FP + FN]
-                }).set_index("Phân loại")
-                st.bar_chart(chart_df, color="#2ecc71")
+            with chart_col2:
+                st.markdown("**Ma trận nhầm lẫn (Confusion Matrix Heatmap)**")
+                fig_cm, ax_cm = plt.subplots(figsize=(6, 4))
+                cm_matrix = [[TN, FP], [FN, TP]]
+                
+                sns.heatmap(cm_matrix, annot=True, fmt='d', cmap='Blues', 
+                            xticklabels=['Dự đoán TỈNH', 'Dự đoán NGỦ'], 
+                            yticklabels=['Thực tế TỈNH', 'Thực tế NGỦ'], 
+                            annot_kws={"size": 16, "weight": "bold"}, ax=ax_cm)
+                
+                ax_cm.set_xlabel('Kết quả hệ thống (Predicted Label)')
+                ax_cm.set_ylabel('Thực tế (True Label)')
+                st.pyplot(fig_cm)
+                st.caption(f"Bản đồ nhiệt thể hiện chi tiết phân bổ: TP={TP}, TN={TN}, FP={FP}, FN={FN}.")
+
         else:
             st.warning("Dữ liệu đánh giá trống. Hãy thêm video vào thư mục test_dataset và chạy lại auto_test.py!")
     else:
@@ -271,21 +291,23 @@ elif page == "3. Đánh giá & Hiệu năng":
     * **Đánh giá Thời gian (Time Threshold):** Loại trừ các chớp mắt sinh lý bình thường bằng cách bắt buộc trạng thái nhắm mắt phải duy trì liên tục vượt qua ngưỡng quy định (ví dụ: `> 1.5s`).
     """)
 
-    st.subheader("4. Đánh giá Ưu điểm và Hạn chế")
+    st.subheader("4. Giải thích hiện tượng Trade-off (Đánh đổi)")
     st.markdown("""
-    **🔥 Điểm mạnh (Dựa trên thực nghiệm):**
-    * **Hoạt động Thời gian thực (Real-time):** Tốc độ xử lý cao, độ trễ cực thấp do không load các mô hình phân loại ảnh nặng nề.
-    * **Tối ưu tài nguyên:** Hệ thống chạy mượt mà trên thiết bị không có GPU.
-    * **Kháng nhiễu ánh sáng:** Đánh giá dựa trên tọa độ điểm ảnh (landmarks), ít bị ảnh hưởng bởi môi trường thiếu sáng hơn phương pháp phân tích pixel truyền thống.
+    Nhìn vào biểu đồ trên, có thể thấy hệ thống đang có xu hướng ưu tiên độ nhạy **(Recall cao hơn Precision)**. 
+    * Trong lĩnh vực an toàn sinh mạng, việc hệ thống "Báo động giả" (False Positive - làm giảm Precision) chỉ gây ra sự phiền toái nhỏ cho tài xế. 
+    * Tuy nhiên, nếu hệ thống "Bỏ lọt" (False Negative - làm giảm Recall) khi tài xế thực sự ngủ gật, hậu quả sẽ là một vụ tai nạn thảm khốc. 
+    * $\\rightarrow$ Do đó, việc tinh chỉnh hệ thống nghiêng về Recall là một quyết định thiết kế có chủ đích.
+    """)
 
-    **⚠️ Hạn chế & Hướng phát triển:**
-    * Thông số `EAR_THRESHOLD` đang bị cố định (Cứng). Dựa trên biểu đồ ma trận nhầm lẫn phía trên, hệ thống vẫn có tỷ lệ sinh ra *Báo động giả (False Positives)* nếu tài xế có đặc điểm mắt nhỏ hoặc góc đặt camera không thuận lợi.
-    * **Hướng khắc phục:** Trong tương lai, cần tích hợp thuật toán Học máy có giám sát (như SVM hoặc KNN) sử dụng file CSV trích xuất để hệ thống có khả năng tự động học và tìm ra ngưỡng EAR phù hợp cho từng khuôn mặt riêng biệt (Personalization).
+    st.subheader("5. Hạn chế & Hướng phát triển")
+    st.markdown("""
+    * **Hạn chế:** Thông số `EAR_THRESHOLD` đang bị thiết lập cứng (Hardcoded). Điều này dẫn đến tỷ lệ sinh ra cảnh báo giả đối với những người có cấu trúc mắt bẩm sinh nhỏ (đặc trưng người Châu Á) hoặc khi người dùng nheo mắt do chói nắng.
+    * **Hướng khắc phục:** Thu thập chuỗi dữ liệu EAR trong 5 phút lái xe đầu tiên lúc tài xế còn tỉnh táo, sau đó ứng dụng các thuật toán **Machine Learning có giám sát (SVM, KNN)** để tự động học và thiết lập "Ngưỡng EAR cá nhân hóa" (Personalized Baseline) cho từng khuôn mặt riêng biệt.
     """)
 
     st.divider()
 
-    st.subheader("5. Nhật ký Video kiểm thử thủ công (App History)")
+    st.subheader("6. Nhật ký Video kiểm thử thủ công (App History)")
     if st.session_state['history_videos']:
         df_history = pd.DataFrame({
             'STT': range(1, len(st.session_state['history_videos']) + 1),
