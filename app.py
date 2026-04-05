@@ -1,3 +1,8 @@
+import os
+# Thủ thuật ép Streamlit dùng bản headless, xóa bỏ bản GUI do Mediapipe tự tải
+if not os.path.exists("/tmp/setup_done.txt"):
+    os.system("pip uninstall -y opencv-python opencv-contrib-python")
+    open("/tmp/setup_done.txt", "w").close()
 import streamlit as st
 import pandas as pd
 import numpy as np
