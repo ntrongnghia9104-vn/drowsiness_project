@@ -239,4 +239,4 @@ elif page == "3. Đánh giá & Hiệu năng":
         })
         st.dataframe(df_history, use_container_width=True)
     else:
-        st.info("Chưa có video nào được kiểm thử thủ công trên App. Hãy sang Trang 2 để tải video lên!")vv
+        st.info("Chưa có video nào được kiểm thử thủ công trên App. Hãy sang Trang 2 để tải video lên!")
