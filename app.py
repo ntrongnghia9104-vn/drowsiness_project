@@ -1,3 +1,17 @@
+import os
+import sys
+import subprocess
+
+# --- KHU VỰC SỬA LỖI HỆ THỐNG (PHẢI ĐẶT TRƯỚC CÁC DÒNG IMPORT KHÁC) ---
+try:
+    import cv2
+except ImportError:
+    # Nếu lỗi, ép cài đặt lại bản headless ngay lập tức
+    subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
+    subprocess.call([sys.executable, "-m", "pip", "uninstall", "-y", "opencv-python", "opencv-contrib-python", "opencv-python-headless"])
+    subprocess.call([sys.executable, "-m", "pip", "install", "opencv-python-headless==4.8.0.74"])
+    import cv2
+# --------------------------------------------------------------------
 import streamlit as st
 import pandas as pd
 import numpy as np
