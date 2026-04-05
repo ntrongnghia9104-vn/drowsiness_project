@@ -1,18 +1,19 @@
 import sys
 import subprocess
 
-# --- BỘ TỰ ĐỘNG CHỮA LÀNH LỖI OPENCV ---
+# --- BỘ TỰ ĐỘNG CHỮA LÀNH LỖI OPENCV (BẢN CHUẨN) ---
 try:
     import cv2
 except ImportError:
-    # Nếu máy chủ thiếu thư viện Linux (libGL), tự động gỡ bản lỗi và cài bản Headless
-    subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "-y", "opencv-python", "opencv-contrib-python"])
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "opencv-python-headless"])
+    # Dùng subprocess.call thay vì check_call để lờ đi cảnh báo nếu gói không tồn tại
+    subprocess.call([sys.executable, "-m", "pip", "uninstall", "-y", "opencv-python", "opencv-contrib-python"])
+    subprocess.call([sys.executable, "-m", "pip", "install", "opencv-python-headless"])
     import cv2
+# ---------------------------------------
+
 import streamlit as st
 import pandas as pd
 import numpy as np
-import cv2
 import mediapipe as mp
 import math
 import tempfile
@@ -83,7 +84,6 @@ if page == "1. Giới thiệu & Khám phá dữ liệu":
     })
     st.dataframe(mock_data, use_container_width=True)
 
-# ================= TRANG 2: TRIỂN KHAI MÔ HÌNH =================
 # ================= TRANG 2: TRIỂN KHAI MÔ HÌNH =================
 elif page == "2. Triển khai mô hình":
     st.title("⚙️ Triển khai nhận diện qua Video")
@@ -239,4 +239,4 @@ elif page == "3. Đánh giá & Hiệu năng":
         })
         st.dataframe(df_history, use_container_width=True)
     else:
-        st.info("Chưa có video nào được kiểm thử thủ công trên App. Hãy sang Trang 2 để tải video lên!")
+        st.info("Chưa có video nào được kiểm thử thủ công trên App. Hãy sang Trang 2 để tải video lên!")vv
