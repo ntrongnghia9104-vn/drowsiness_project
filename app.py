@@ -8,7 +8,7 @@ import tempfile
 import time
 import os
 import pygame 
-import json # Đã thêm thư viện json để đọc file đánh giá
+import json
 
 # ================= CẤU HÌNH TRANG WEB =================
 st.set_page_config(page_title="Hệ thống Cảnh báo Ngủ gật", page_icon="🚗", layout="wide")
@@ -71,9 +71,9 @@ if page == "1. Giới thiệu & Khám phá dữ liệu":
         'EAR_Trung_bình': [0.315, 0.317, 0.145, 0.117, 0.107, 0.295],
         'Đánh_giá_Tức_thời': ['Mở mắt', 'Mở mắt', 'Nhắm mắt', 'Nhắm mắt', 'Nhắm mắt', 'Mở mắt']
     })
-    st.dataframe(mock_data, use_container_width=True)
+    st.dataframe(mock_data, width='tretch')
 
-# ================= TRANG 2: TRIỂN KHAI MÔ HÌNH =================
+# ================= TRANG 2: TRIỂN KHAI MÔ HÌNH (ĐÃ SỬA ĐỂ CHẠY REAL-TIME TRÊN STREAMLIT CLOUD) =================
 elif page == "2. Triển khai mô hình":
     st.title("⚙️ Triển khai nhận diện qua Video")
     
@@ -83,7 +83,7 @@ elif page == "2. Triển khai mô hình":
     TIME_THRESHOLD = st.sidebar.slider("Thời gian nhắm mắt (Giây)", 0.5, 3.0, 1.5, 0.1)
     SHOW_MESH = st.sidebar.checkbox("👁️ Hiện lưới điểm mặt", value=False)
 
-    uploaded_file = st.file_uploader("Tải video kiểm thử (.mp4, .avi)", type=['mp4', 'avi', 'mov'])
+    uploaded_file = st.file_uploader("Tải video kiểm thử (.mp4, .avi, .mov)", type=['mp4', 'avi', 'mov'])
     
     if uploaded_file is not None:
         if uploaded_file.name not in st.session_state['history_videos']:
@@ -91,17 +91,26 @@ elif page == "2. Triển khai mô hình":
 
         st.info(f"Đang xử lý: {uploaded_file.name}")
         
-        tfile = tempfile.NamedTemporaryFile(delete=False) 
+        # ====================== SỬA LỖI THƯỜNG GẶP TRÊN STREAMLIT CLOUD ======================
+        # 1. Tạo temp file + flush + fsync để đảm bảo file đã ghi đầy đủ trước khi cv2 đọc
+        # 2. Thêm delay để video chạy đúng tốc độ gốc (real-time playback)
+        # 3. Tối ưu hơn để tránh lag UI trên Cloud
+        
+        tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
         tfile.write(uploaded_file.read())
+        tfile.flush()           # Quan trọng: ép dữ liệu xuống đĩa
+        os.fsync(tfile.fileno()) # Đảm bảo file hoàn chỉnh trước khi cv2 mở
+        tfile.close()            # Đóng file để cv2 có thể đọc
+
         cap = cv2.VideoCapture(tfile.name)
         
-        # --- FIX LOGIC THỜI GIAN: Lấy FPS gốc của video ---
+        # --- LẤY FPS GỐC CỦA VIDEO ---
         video_fps = cap.get(cv2.CAP_PROP_FPS)
         if video_fps == 0 or math.isnan(video_fps): 
-            video_fps = 30.0 # Giá trị mặc định nếu video bị lỗi không đọc được FPS
+            video_fps = 30.0
             
-        required_frames_to_alarm = int(TIME_THRESHOLD * video_fps) # Số frame cần thiết để báo động
-        closed_frames_count = 0 # Bộ đếm số frame nhắm mắt liên tục
+        required_frames_to_alarm = int(TIME_THRESHOLD * video_fps)
+        closed_frames_count = 0
         
         stframe = st.empty() 
         status_text = st.empty() 
@@ -120,13 +129,17 @@ elif page == "2. Triển khai mô hình":
             except Exception as e:
                 audio_status.warning(f"⚠️ Không thể khởi tạo âm thanh (Bình thường nếu chạy trên Cloud): {e}")
 
+        # ====================== REAL-TIME PLAYBACK LOGIC ======================
+        start_time = time.time()
+        processed_frames = 0
+
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret: 
                 status_text.success("✅ Đã phát xong video!")
                 break 
                 
-            # --- TỐI ƯU: THU NHỎ KÍCH THƯỚC VIDEO (Chống lag) ---
+            # Tối ưu kích thước (giảm lag trên Cloud)
             h_ori, w_ori, _ = frame.shape
             new_w = 640
             new_h = int((new_w / w_ori) * h_ori)
@@ -140,7 +153,8 @@ elif page == "2. Triển khai mô hình":
                 for face_landmarks in results.multi_face_landmarks:
                     if SHOW_MESH:
                         mp_drawing.draw_landmarks(
-                            image=rgb_frame, landmark_list=face_landmarks,
+                            image=rgb_frame, 
+                            landmark_list=face_landmarks,
                             connections=mp.solutions.face_mesh.FACEMESH_TESSELATION,
                             landmark_drawing_spec=None,
                             connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_tesselation_style())
@@ -149,28 +163,24 @@ elif page == "2. Triển khai mô hình":
                     right_ear = calculate_ear(face_landmarks.landmark, RIGHT_EYE_INDICES)
                     avg_ear = (left_ear + right_ear) / 2.0
                     
-                    color = (0, 255, 0) # Xanh - Tỉnh táo
+                    color = (0, 255, 0)
                     
-                    # --- LOGIC CẢNH BÁO MỚI (DỰA TRÊN SỐ KHUNG HÌNH) ---
                     if avg_ear < EAR_THRESHOLD:
-                        closed_frames_count += 1 # Tăng bộ đếm khi nhắm mắt
-                        
-                        # Tính thời gian nhắm mắt thực tế trong video
+                        closed_frames_count += 1
                         elapsed_video_time = closed_frames_count / video_fps
                         
                         if closed_frames_count >= required_frames_to_alarm:
-                            color = (255, 0, 0) # Đỏ - Ngủ gật
+                            color = (255, 0, 0)
                             status_text.error(f"🚨 CẢNH BÁO: NGỦ GẬT! (EAR: {avg_ear:.2f} - Đã nhắm mắt {elapsed_video_time:.1f}s)")
                             
-                            if pygame_initialized:
-                                if not pygame.mixer.music.get_busy(): 
-                                    try:
-                                        pygame.mixer.music.load(alarm_sound_path)
-                                        pygame.mixer.music.play(-1)
-                                    except Exception:
-                                        pass 
+                            if pygame_initialized and not pygame.mixer.music.get_busy():
+                                try:
+                                    pygame.mixer.music.load(alarm_sound_path)
+                                    pygame.mixer.music.play(-1)
+                                except:
+                                    pass
                     else:
-                        closed_frames_count = 0 # Reset bộ đếm nếu mở mắt
+                        closed_frames_count = 0
                         status_text.success(f"✅ ĐANG TỈNH TÁO (EAR: {avg_ear:.2f})")
                         
                         if pygame_initialized and pygame.mixer.music.get_busy():
@@ -178,12 +188,28 @@ elif page == "2. Triển khai mô hình":
                     
                     cv2.putText(rgb_frame, f"EAR: {avg_ear:.2f}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
             
-            # Cập nhật hình ảnh lên UI, dùng use_container_width để tự fix tỷ lệ khung hình Streamlit
-            stframe.image(rgb_frame, channels="RGB", use_container_width=True)
+            # HIỂN THỊ FRAME (đã được fix để chạy mượt trên Cloud)
+            stframe.image(rgb_frame, channels="RGB", width='tretch')
             
+            # ====================== ĐIỀU CHỈNH TỐC ĐỘ REAL-TIME ======================
+            processed_frames += 1
+            if video_fps > 0:
+                target_elapsed = processed_frames / video_fps          # Thời gian lý thuyết theo FPS gốc
+                actual_elapsed = time.time() - start_time
+                sleep_time = target_elapsed - actual_elapsed
+                if sleep_time > 0:
+                    time.sleep(sleep_time)   # Giữ video chạy đúng tốc độ gốc
+
+        # Dọn dẹp
         if pygame_initialized:
             pygame.mixer.music.stop()
         cap.release()
+        
+        # Xóa file tạm (tốt cho Cloud)
+        try:
+            os.unlink(tfile.name)
+        except:
+            pass
 
 # ================= TRANG 3: ĐÁNH GIÁ & HIỆU NĂNG =================
 elif page == "3. Đánh giá & Hiệu năng":
@@ -191,7 +217,6 @@ elif page == "3. Đánh giá & Hiệu năng":
     
     st.info("Hệ thống được đánh giá qua Kiểm thử tự động (Automated Batch Testing) trên tập dữ liệu video thực tế nhằm đối chiếu kết quả dự đoán với nhãn gốc (Ground Truth).")
 
-    # ---------------- PHẦN ĐỌC METRICS TỪ JSON ----------------
     if os.path.exists("evaluation_metrics.json"):
         with open("evaluation_metrics.json", "r") as f:
             metrics_data = json.load(f)
@@ -218,7 +243,6 @@ elif page == "3. Đánh giá & Hiệu năng":
             col_chart1, col_chart2 = st.columns([1.2, 1])
             
             with col_chart1:
-                # Tạo bảng Confusion Matrix
                 conf_matrix = pd.DataFrame(
                     [[TN, FP], [FN, TP]], 
                     index=['Thực tế: Tỉnh táo (0)', 'Thực tế: Ngủ gật (1)'],
@@ -228,7 +252,6 @@ elif page == "3. Đánh giá & Hiệu năng":
                 st.caption(f"**Tổng số mẫu kiểm thử:** {total} video. Bảng thể hiện sự tương quan giữa thực tế và dự đoán của hệ thống.")
 
             with col_chart2:
-                # Biểu đồ cột thể hiện tỷ lệ Đúng/Sai
                 chart_df = pd.DataFrame({
                     "Phân loại": ["Dự đoán ĐÚNG (TP+TN)", "Dự đoán SAI (FP+FN)"],
                     "Số lượng video": [TP + TN, FP + FN]
@@ -241,7 +264,6 @@ elif page == "3. Đánh giá & Hiệu năng":
 
     st.divider()
 
-    # ---------------- PHẦN LÝ LUẬN & ƯU NHƯỢC ĐIỂM ----------------
     st.subheader("3. Phương pháp & Logic Đánh giá")
     st.markdown("""
     Quyết định cảnh báo của hệ thống không dựa trên cảm tính, mà được đánh giá khắt khe qua 2 rào cản đồng thời:
@@ -270,6 +292,6 @@ elif page == "3. Đánh giá & Hiệu năng":
             'Tên file video': st.session_state['history_videos'],
             'Trạng thái kiểm tra': ['Hoàn tất luồng xử lý' for _ in st.session_state['history_videos']]
         })
-        st.dataframe(df_history, use_container_width=True)
+        st.dataframe(df_history, width='tretch')
     else:
         st.info("Chưa có video nào được kiểm thử thủ công trên App. Hãy sang Trang 2 để tải video lên!")
