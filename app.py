@@ -7,7 +7,6 @@ import math
 import tempfile
 import time
 import os
-import pygame 
 import json # Đã thêm thư viện json để đọc file đánh giá
 
 # ================= CẤU HÌNH TRANG WEB =================
@@ -74,6 +73,7 @@ if page == "1. Giới thiệu & Khám phá dữ liệu":
     st.dataframe(mock_data, use_container_width=True)
 
 # ================= TRANG 2: TRIỂN KHAI MÔ HÌNH =================
+# ================= TRANG 2: TRIỂN KHAI MÔ HÌNH =================
 elif page == "2. Triển khai mô hình":
     st.title("⚙️ Triển khai nhận diện qua Video")
     
@@ -83,7 +83,7 @@ elif page == "2. Triển khai mô hình":
     TIME_THRESHOLD = st.sidebar.slider("Thời gian nhắm mắt (Giây)", 0.5, 3.0, 1.5, 0.1)
     SHOW_MESH = st.sidebar.checkbox("👁️ Hiện lưới điểm mặt", value=True)
 
-    uploaded_file = st.file_uploader("Tải video kiểm thử (.mp4, .avi)", type=['mp4', 'avi', 'mov'])
+    uploaded_file = st.file_uploader("Tải video kiểm thử (.mp4, .avi, .mov)", type=['mp4', 'avi', 'mov'])
     
     if uploaded_file is not None:
         if uploaded_file.name not in st.session_state['history_videos']:
@@ -97,22 +97,8 @@ elif page == "2. Triển khai mô hình":
         
         stframe = st.empty() 
         status_text = st.empty() 
-        audio_status = st.empty() 
         
         start_drowsy_time = None 
-        
-        # --- KHỞI TẠO PYGAME ---
-        alarm_sound_path = "alarm.mp3" 
-        pygame_initialized = False
-        
-        if not os.path.exists(alarm_sound_path):
-            audio_status.error(f"❌ KHÔNG TÌM THẤY FILE: '{alarm_sound_path}'. Vui lòng copy file này vào cùng thư mục với app.py!")
-        else:
-            try:
-                pygame.mixer.init()
-                pygame_initialized = True
-            except Exception as e:
-                audio_status.error(f"❌ Lỗi khởi tạo card âm thanh: {e}")
 
         while cap.isOpened():
             ret, frame = cap.read()
@@ -145,28 +131,14 @@ elif page == "2. Triển khai mô hình":
                         if elapsed_time >= TIME_THRESHOLD:
                             color = (255, 0, 0) # Đỏ - Ngủ gật
                             status_text.error(f"🚨 CẢNH BÁO: NGỦ GẬT! (EAR: {avg_ear:.2f} - Đã nhắm mắt {elapsed_time:.1f}s)")
-                            
-                            if pygame_initialized:
-                                if not pygame.mixer.music.get_busy(): 
-                                    try:
-                                        pygame.mixer.music.load(alarm_sound_path)
-                                        pygame.mixer.music.play(-1)
-                                    except Exception as e:
-                                        audio_status.error(f"⚠️ Không thể phát tiếng: {e}")
-
                     else:
                         start_drowsy_time = None
                         status_text.success(f"✅ ĐANG TỈNH TÁO (EAR: {avg_ear:.2f})")
-                        
-                        if pygame_initialized and pygame.mixer.music.get_busy():
-                            pygame.mixer.music.stop()
                     
                     cv2.putText(rgb_frame, f"EAR: {avg_ear:.2f}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
             
             stframe.image(rgb_frame, channels="RGB")
             
-        if pygame_initialized:
-            pygame.mixer.music.stop()
         cap.release()
 
 # ================= TRANG 3: ĐÁNH GIÁ & HIỆU NĂNG =================
