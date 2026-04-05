@@ -1,8 +1,14 @@
-import os
-# Thủ thuật ép Streamlit dùng bản headless, xóa bỏ bản GUI do Mediapipe tự tải
-if not os.path.exists("/tmp/setup_done.txt"):
-    os.system("pip uninstall -y opencv-python opencv-contrib-python")
-    open("/tmp/setup_done.txt", "w").close()
+import sys
+import subprocess
+
+# --- BỘ TỰ ĐỘNG CHỮA LÀNH LỖI OPENCV ---
+try:
+    import cv2
+except ImportError:
+    # Nếu máy chủ thiếu thư viện Linux (libGL), tự động gỡ bản lỗi và cài bản Headless
+    subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "-y", "opencv-python", "opencv-contrib-python"])
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "opencv-python-headless"])
+    import cv2
 import streamlit as st
 import pandas as pd
 import numpy as np
