@@ -8,7 +8,7 @@ import tempfile
 import time
 import os
 import pygame 
-import json 
+import json # Đã thêm thư viện json để đọc file đánh giá
 
 # ================= CẤU HÌNH TRANG WEB =================
 st.set_page_config(page_title="Hệ thống Cảnh báo Ngủ gật", page_icon="🚗", layout="wide")
@@ -56,21 +56,21 @@ if page == "1. Giới thiệu & Khám phá dữ liệu":
     * **MSSV:** 22T1020256
     
     ### 🎯 Mục tiêu & Giá trị thực tiễn
-    Hệ thống giúp phát hiện sớm dấu hiệu giảm tỉnh táo qua luồng video bằng cách đo lường Tỷ lệ khung mắt (EAR). 
-    Dự án ứng dụng mô hình Deep Learning **MediaPipe Face Mesh** của Google kết hợp với thuật toán đánh giá chuỗi thời gian để đưa ra cảnh báo chính xác, giảm thiểu tai nạn giao thông.
+    Hệ thống giúp phát hiện sớm dấu hiệu giảm tỉnh táo qua luồng video bằng cách tính toán Tỷ lệ khung mắt (EAR). 
+    Dự án ứng dụng mô hình Deep Learning **MediaPipe Face Mesh** của Google để bắt 468 điểm landmark trên mặt kết hợp với thuật toán logic chuỗi thời gian.
     """)
     st.divider()
     
-    st.subheader("🔍 Mẫu dữ liệu thô (Raw Data)")
-    st.markdown("Dưới đây là cấu trúc dữ liệu cơ bản được hệ thống theo dõi và ghi nhận liên tục theo từng khung hình (Frame) để làm cơ sở ra lệnh cảnh báo:")
+    st.subheader("🔍 Mẫu dữ liệu thô trích xuất từ Video (Raw Data)")
+    st.markdown("Dưới đây là mô phỏng cấu trúc dữ liệu thô (chuỗi số EAR) được hệ thống trích xuất theo từng khung hình (frame) để phục vụ cho logic ra quyết định và mở rộng huấn luyện Học máy (MLOps) trong tương lai:")
     
-    # Bảng dữ liệu đã được làm gọn, chỉ giữ lại các chỉ số cốt lõi
     mock_data = pd.DataFrame({
-        'Khung hình (Frame)': [1, 2, 3, 4, 5],
-        'Chỉ số EAR': [0.32, 0.31, 0.15, 0.12, 0.30],
-        'Trạng thái ghi nhận': ['Mở mắt', 'Mở mắt', 'Nhắm mắt', 'Nhắm mắt', 'Mở mắt']
+        'Khung_hình (Frame)': [1, 2, 3, 4, 5, 6],
+        'EAR_Mắt_Trái': [0.320, 0.315, 0.150, 0.120, 0.110, 0.300],
+        'EAR_Mắt_Phải': [0.310, 0.320, 0.140, 0.115, 0.105, 0.290],
+        'EAR_Trung_bình': [0.315, 0.317, 0.145, 0.117, 0.107, 0.295],
+        'Đánh_giá_Tức_thời': ['Mở mắt', 'Mở mắt', 'Nhắm mắt', 'Nhắm mắt', 'Nhắm mắt', 'Mở mắt']
     })
-    
     st.dataframe(mock_data, use_container_width=True)
 
 # ================= TRANG 2: TRIỂN KHAI MÔ HÌNH =================
@@ -81,9 +81,9 @@ elif page == "2. Triển khai mô hình":
     st.sidebar.subheader("⚙️ Cài đặt thông số")
     EAR_THRESHOLD = st.sidebar.slider("Ngưỡng EAR (Threshold)", 0.15, 0.35, 0.21, 0.01)
     TIME_THRESHOLD = st.sidebar.slider("Thời gian nhắm mắt (Giây)", 0.5, 3.0, 1.5, 0.1)
-    SHOW_MESH = st.sidebar.checkbox("👁️ Hiện lưới điểm mặt", value=True)
+    SHOW_MESH = st.sidebar.checkbox("👁️ Hiện lưới điểm mặt", value=False)
 
-    uploaded_file = st.file_uploader("Tải video kiểm thử (.mp4, .avi, .mov)", type=['mp4', 'avi', 'mov'])
+    uploaded_file = st.file_uploader("Tải video kiểm thử (.mp4, .avi)", type=['mp4', 'avi', 'mov'])
     
     if uploaded_file is not None:
         if uploaded_file.name not in st.session_state['history_videos']:
@@ -95,11 +95,17 @@ elif page == "2. Triển khai mô hình":
         tfile.write(uploaded_file.read())
         cap = cv2.VideoCapture(tfile.name)
         
+        # --- FIX LOGIC THỜI GIAN: Lấy FPS gốc của video ---
+        video_fps = cap.get(cv2.CAP_PROP_FPS)
+        if video_fps == 0 or math.isnan(video_fps): 
+            video_fps = 30.0 # Giá trị mặc định nếu video bị lỗi không đọc được FPS
+            
+        required_frames_to_alarm = int(TIME_THRESHOLD * video_fps) # Số frame cần thiết để báo động
+        closed_frames_count = 0 # Bộ đếm số frame nhắm mắt liên tục
+        
         stframe = st.empty() 
         status_text = st.empty() 
         audio_status = st.empty() 
-        
-        start_drowsy_time = None 
         
         # --- KHỞI TẠO PYGAME ---
         alarm_sound_path = "alarm.mp3" 
@@ -112,12 +118,20 @@ elif page == "2. Triển khai mô hình":
                 pygame.mixer.init()
                 pygame_initialized = True
             except Exception as e:
-                audio_status.error(f"❌ Lỗi khởi tạo card âm thanh: {e}")
+                audio_status.warning(f"⚠️ Không thể khởi tạo âm thanh (Bình thường nếu chạy trên Cloud): {e}")
 
         while cap.isOpened():
             ret, frame = cap.read()
-            if not ret: break 
+            if not ret: 
+                status_text.success("✅ Đã phát xong video!")
+                break 
                 
+            # --- TỐI ƯU: THU NHỎ KÍCH THƯỚC VIDEO (Chống lag) ---
+            h_ori, w_ori, _ = frame.shape
+            new_w = 640
+            new_h = int((new_w / w_ori) * h_ori)
+            frame = cv2.resize(frame, (new_w, new_h))
+
             frame = cv2.flip(frame, 1)
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = face_mesh.process(rgb_frame)
@@ -137,25 +151,26 @@ elif page == "2. Triển khai mô hình":
                     
                     color = (0, 255, 0) # Xanh - Tỉnh táo
                     
+                    # --- LOGIC CẢNH BÁO MỚI (DỰA TRÊN SỐ KHUNG HÌNH) ---
                     if avg_ear < EAR_THRESHOLD:
-                        if start_drowsy_time is None:
-                            start_drowsy_time = time.time()
+                        closed_frames_count += 1 # Tăng bộ đếm khi nhắm mắt
                         
-                        elapsed_time = time.time() - start_drowsy_time
-                        if elapsed_time >= TIME_THRESHOLD:
+                        # Tính thời gian nhắm mắt thực tế trong video
+                        elapsed_video_time = closed_frames_count / video_fps
+                        
+                        if closed_frames_count >= required_frames_to_alarm:
                             color = (255, 0, 0) # Đỏ - Ngủ gật
-                            status_text.error(f"🚨 CẢNH BÁO: NGỦ GẬT! (EAR: {avg_ear:.2f} - Đã nhắm mắt {elapsed_time:.1f}s)")
+                            status_text.error(f"🚨 CẢNH BÁO: NGỦ GẬT! (EAR: {avg_ear:.2f} - Đã nhắm mắt {elapsed_video_time:.1f}s)")
                             
                             if pygame_initialized:
                                 if not pygame.mixer.music.get_busy(): 
                                     try:
                                         pygame.mixer.music.load(alarm_sound_path)
                                         pygame.mixer.music.play(-1)
-                                    except Exception as e:
-                                        audio_status.error(f"⚠️ Không thể phát tiếng: {e}")
-
+                                    except Exception:
+                                        pass 
                     else:
-                        start_drowsy_time = None
+                        closed_frames_count = 0 # Reset bộ đếm nếu mở mắt
                         status_text.success(f"✅ ĐANG TỈNH TÁO (EAR: {avg_ear:.2f})")
                         
                         if pygame_initialized and pygame.mixer.music.get_busy():
@@ -163,7 +178,8 @@ elif page == "2. Triển khai mô hình":
                     
                     cv2.putText(rgb_frame, f"EAR: {avg_ear:.2f}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
             
-            stframe.image(rgb_frame, channels="RGB")
+            # Cập nhật hình ảnh lên UI, dùng use_container_width để tự fix tỷ lệ khung hình Streamlit
+            stframe.image(rgb_frame, channels="RGB", use_container_width=True)
             
         if pygame_initialized:
             pygame.mixer.music.stop()
