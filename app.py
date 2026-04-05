@@ -1,15 +1,19 @@
 import os
 import sys
-import subprocess
 
-# --- KHU VỰC SỬA LỖI HỆ THỐNG (PHẢI ĐẶT TRƯỚC CÁC DÒNG IMPORT KHÁC) ---
+# --- CHIẾN THUẬT ĐÁNH LỪA HỆ THỐNG (MONKEY PATCH) ---
+# Tạo một file giả lập libGL để OpenCV không báo lỗi khi khởi tạo
+if not os.path.exists("/tmp/libGL.so.1"):
+    with open("/tmp/libGL.so.1", "w") as f:
+        f.write("")
+os.environ["LD_PRELOAD"] = "/tmp/libGL.so.1"
+
 try:
     import cv2
 except ImportError:
-    # Nếu lỗi, ép cài đặt lại bản headless ngay lập tức
-    subprocess.call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
-    subprocess.call([sys.executable, "-m", "pip", "uninstall", "-y", "opencv-python", "opencv-contrib-python", "opencv-python-headless"])
-    subprocess.call([sys.executable, "-m", "pip", "install", "opencv-python-headless==4.8.0.74"])
+    import subprocess
+    # Cài đặt bản headless sạch sẽ nhất
+    subprocess.call([sys.executable, "-m", "pip", "install", "opencv-python-headless==4.8.0.74", "--force-reinstall"])
     import cv2
 # --------------------------------------------------------------------
 import streamlit as st
