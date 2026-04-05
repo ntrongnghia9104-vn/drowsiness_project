@@ -1,12 +1,7 @@
 import os
-import sys
 
-# --- CHIẾN THUẬT ĐÁNH LỪA HỆ THỐNG (MONKEY PATCH) ---
-# Tạo một file giả lập libGL để OpenCV không báo lỗi khi khởi tạo
-if not os.path.exists("/tmp/libGL.so.1"):
-    with open("/tmp/libGL.so.1", "w") as f:
-        f.write("")
-os.environ["LD_PRELOAD"] = "/tmp/libGL.so.1"
+# ÉP BUỘC CHẾ ĐỘ HEADLESS CHO OPENCV
+os.environ["OPENCV_VIDEOIO_PRIORITY_MSMF"] = "0"
 
 try:
     import cv2
